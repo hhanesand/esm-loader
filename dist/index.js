@@ -54,7 +54,7 @@ const tsconfig = process.env.ESBK_TSCONFIG_PATH ? {
   path: path.resolve(process.env.ESBK_TSCONFIG_PATH),
   config: parseTsconfig(process.env.ESBK_TSCONFIG_PATH)
 } : getTsconfig();
-const fileMatcher = tsconfig && createFilesMatcher(tsconfig);
+tsconfig && createFilesMatcher(tsconfig);
 const tsconfigPathsMatcher = tsconfig && createPathsMatcher(tsconfig);
 const fileProtocol = "file://";
 const tsExtensionsPattern = /\.([cm]?ts|[tj]sx)$/;
@@ -79,6 +79,33 @@ const getFormatFromFileUrl = (fileUrl) => {
     return getPackageType(fileUrl);
   }
 };
+
+const tsConfigPathsCache = /* @__PURE__ */ new Map();
+const tsConfigCache = /* @__PURE__ */ new Map();
+async function cachedTsConfig(filePath) {
+  const cachedPath = tsConfigPathsCache.get(filePath);
+  if (cachedPath) {
+    const cachedConfig = tsConfigCache.get(cachedPath);
+    if (cachedConfig) {
+      return cachedConfig;
+    }
+    console.error("cachedTsConfig: cachedPath not found", cachedPath);
+    throw new Error("cachedTsConfig: cachedPath not found");
+  }
+  try {
+    const tsConfig = getTsconfig(filePath);
+    if (!tsConfig) {
+      return void 0;
+    }
+    if (!tsConfigCache.has(tsConfig.path)) {
+      tsConfigCache.set(tsConfig.path, tsConfig);
+    }
+    tsConfigPathsCache.set(filePath, tsConfig.path);
+    return tsConfig;
+  } catch {
+    throw new Error(`Error parsing: ${filePath}`);
+  }
+}
 
 const extensions = [".js", ".json", ".ts", ".tsx", ".jsx"];
 async function tryExtensions(specifier, context, defaultResolve) {
@@ -132,7 +159,6 @@ const resolve = async function(specifier, context, defaultResolve, recursiveCall
   const isPath = specifier.startsWith(fileProtocol) || isPathPattern.test(specifier);
   if (tsconfigPathsMatcher && !isPath && !context.parentURL?.includes("/node_modules/")) {
     const possiblePaths = tsconfigPathsMatcher(specifier);
-    console.log("tsconfigPathsMatcher", specifier, possiblePaths);
     for (const possiblePath of possiblePaths) {
       try {
         return await resolve(
@@ -154,8 +180,6 @@ const resolve = async function(specifier, context, defaultResolve, recursiveCall
         if (code !== "ERR_MODULE_NOT_FOUND" && code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") {
           throw error;
         }
-      } finally {
-        console.log("perfer ts", specifier, tsPath);
       }
     }
   }
@@ -186,7 +210,6 @@ const resolve = async function(specifier, context, defaultResolve, recursiveCall
   if (!resolved.format && resolved.url.startsWith(fileProtocol)) {
     resolved.format = await getFormatFromFileUrl(resolved.url);
   }
-  console.log("default resolve", specifier, resolved.url, resolved.format);
   return resolved;
 };
 const load = async function(url, context, defaultLoad) {
@@ -209,11 +232,12 @@ const load = async function(url, context, defaultLoad) {
   const filePath = url.startsWith("file://") ? fileURLToPath(url) : url;
   const code = loaded.source.toString();
   if (loaded.format === "json" || tsExtensionsPattern.test(url)) {
+    const tsconfig = await cachedTsConfig(filePath);
     const transformed = await transform(
       code,
       filePath,
       {
-        tsconfigRaw: fileMatcher?.(filePath)
+        tsconfigRaw: tsconfig?.config
       }
     );
     return {

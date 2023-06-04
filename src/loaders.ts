@@ -17,6 +17,7 @@ import {
 	type ModuleFormat,
 	type MaybePromise,
 } from './utils.js';
+import{ cachedTsConfig } from "./tsconfig-json.js"
 
 type Resolved = {
 	url: string;
@@ -123,7 +124,6 @@ export const resolve: resolve = async function (
 		&& !context.parentURL?.includes('/node_modules/')
 	) {
 		const possiblePaths = tsconfigPathsMatcher(specifier);
-		console.log("tsconfigPathsMatcher", specifier, possiblePaths);
 
 		for (const possiblePath of possiblePaths) {
 			try {
@@ -153,8 +153,6 @@ export const resolve: resolve = async function (
 				) {
 					throw error;
 				}
-			} finally {
-				console.log("perfer ts", specifier, tsPath);
 			}
 		}
 	}
@@ -195,7 +193,6 @@ export const resolve: resolve = async function (
 		resolved.format = await getFormatFromFileUrl(resolved.url);
 	}
 
-	console.log("default resolve", specifier, resolved.url, resolved.format)
 	return resolved;
 };
 
@@ -243,11 +240,13 @@ export const load: load = async function (
 		loaded.format === 'json'
 		|| tsExtensionsPattern.test(url)
 	) {
+		const tsconfig = await cachedTsConfig(filePath);
+
 		const transformed = await transform(
 			code,
 			filePath,
 			{
-				tsconfigRaw: fileMatcher?.(filePath) as TransformOptions['tsconfigRaw'],
+				tsconfigRaw: tsconfig?.config as TransformOptions['tsconfigRaw'],
 			},
 		);
 
