@@ -123,6 +123,8 @@ export const resolve: resolve = async function (
 		&& !context.parentURL?.includes('/node_modules/')
 	) {
 		const possiblePaths = tsconfigPathsMatcher(specifier);
+		console.log("tsconfigPathsMatcher", specifier, possiblePaths);
+
 		for (const possiblePath of possiblePaths) {
 			try {
 				return await resolve(
@@ -151,6 +153,8 @@ export const resolve: resolve = async function (
 				) {
 					throw error;
 				}
+			} finally {
+				console.log("perfer ts", specifier, tsPath);
 			}
 		}
 	}
@@ -191,6 +195,7 @@ export const resolve: resolve = async function (
 		resolved.format = await getFormatFromFileUrl(resolved.url);
 	}
 
+	console.log("default resolve", specifier, resolved.url, resolved.format)
 	return resolved;
 };
 
